@@ -1,0 +1,23 @@
+{
+  "repos": [
+    {
+      "url": "https://github.com/borisyankov/DefinitelyTyped.git",
+      "ref": "master"
+    }
+  ],
+  "path": "typings",
+  "bundle": "typings/bundle.d.ts",
+  "link": {
+    "npm": {
+      "include": true
+    }
+  },
+  "dependencies": {
+    "node/node.d.ts": {
+      "ref": "b45569f35d5f27716d21cc2a639c7d8ccb9a0164"
+    },
+    "minimist/minimist.d.ts": {
+      "ref": "284c2b8828f06bdde1f949a22ad174f5221d57f9"
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "revenant",
+  "version": "0.1.0",
+  "description": "Runs a command and retry on failure",
+  "main": "index.js",
+  "bin": {
+    "revenant": "./bin/revenant"
+  },
+  "scripts": {
+    "build": "tsc src/lib/cli.ts --module commonjs --outDir lib src/lib/cli.ts",
+    "setup": "dtsm --insight false install"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/motemen/revenant.git"
+  },
+  "author": "motemen <motemen@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/motemen/revenant/issues"
+  },
+  "homepage": "https://github.com/motemen/revenant#readme",
+  "devDependencies": {
+    "dtsm": "^0.10.3",
+    "typescript": "^1.5.3"
+  },
+  "dependencies": {
+    "minimist": "^1.1.3"
+  }
+}
