@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "tsc src/lib/cli.ts --module commonjs --outDir lib src/lib/cli.ts",
+    "watch": "tsc src/lib/cli.ts --watch --module commonjs --outDir lib src/lib/cli.ts",
     "setup": "dtsm --insight false install"
   },
   "repository": {
