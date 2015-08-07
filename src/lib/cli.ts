@@ -13,26 +13,29 @@ class Command {
   out: string = '';
   err: string = '';
 
-  exitCode: number;
+  exitCode: number = null;
 
   constructor(cmd: string[]) {
     this.command = cmd[0];
     this.args    = cmd.slice(1);
   }
 
-  run(): Promise<any> {
-    return new Promise<any>((resolve, reject) => {
+  run(): Promise<Command> {
+    return new Promise<Command>((resolve, reject) => {
       this.process = child_process.spawn(this.command, this.args);
       this.process.stdout.on('data', (data: string) => { this.out += data });
       this.process.stderr.on('data', (data: string) => { this.err += data });
-      this.process.on('close', (exitCode: number) => {
+      this.process.on('close', (exitCode: number, signal: string) => {
         this.exitCode = exitCode;
 
         if (exitCode === 0) {
-          resolve();
+          resolve(this);
         } else {
           reject(`exited with code ${exitCode}`);
         }
+      });
+      this.process.on('error', (err: Error) => {
+        reject(err);
       });
     });
   }
@@ -60,15 +63,15 @@ class Revenant implements RevenantOpts {
 
   verbose: boolean = false;
 
-  attempts: number = 0;
+  private attempts: number = 0;
 
   constructor (commandArgs: string[], opts?: RevenantOpts) {
     this.commandArgs = commandArgs;
 
     if (opts) {
-      this.maxAttempts    = opts.maxAttempts;
+      this.maxAttempts    = opts.maxAttempts || 5;
       this.timeoutSeconds = opts.timeoutSeconds;
-      this.outputPatterns = opts.outputPatterns;
+      this.outputPatterns = opts.outputPatterns || [];
       this.verbose        = opts.verbose;
     }
 
@@ -82,34 +85,50 @@ class Revenant implements RevenantOpts {
       this.attempts++;
 
       var cmd = new Command(this.commandArgs);
-      var timeout = new Promise<Command>((resolve, reject) => {
-        if (this.timeoutSeconds > 0) {
-          var timeoutMillis = this.timeoutSeconds * 1000;
-          setTimeout(() => {
-            cmd.process.kill();
-            reject(`timed out after ${timeoutMillis}ms`);
-          }, timeoutMillis);
-        }
+
+      var timeout = new Promise<any>((resolve, reject) => {
+        if (!(this.timeoutSeconds > 0)) return;
+
+        var timeoutMillis = this.timeoutSeconds * 1000;
+        setTimeout(() => {
+          cmd.process.kill();
+          reject(`timed out after ${timeoutMillis}ms`);
+        }, timeoutMillis);
       });
 
-      return Promise.race([ cmd.run(), timeout ])
-        .then(() => {
+      return Promise.race([ cmd.run(), timeout ]).catch((err) => {
+        this.log(`--> ${err}`)
+
+        // If exited normal way (i.e. no timeout), check the output
+        // and if none matched, give up
+        // TODO use err to determine if timed out or not
+        if (cmd.exitCode !== null && !this.outputMatches(cmd)) {
+          this.log(`--> no pattern matched`);
           return cmd;
-        }, (err) => {
-          this.log(`--> ${err}`);
+        }
 
-          if (this.attempts >= this.maxAttempts) {
-            return cmd;
-          }
+        if (this.attempts >= this.maxAttempts) {
+          this.log(`--> giving up`);
+          return cmd;
+        }
 
-          this.log(cmd.out, { prefix: 'OUT ' });
-          this.log(cmd.err, { prefix: 'ERR ' });
+        this.log(cmd.out, { prefix: 'OUT ' });
+        this.log(cmd.err, { prefix: 'ERR ' });
 
-          return next();
-        });
+        return next();
+      });
     }
 
     return next();
+  }
+
+  private outputMatches(cmd: Command): boolean {
+    var patterns = this.outputPatterns;
+    if (!patterns || patterns.length === 0) {
+      patterns = [ /(?:)/ ];
+    }
+
+    return patterns.some((re) => re.test(cmd.out) || re.test(cmd.err));
   }
 
   private log(data: string, opts?: { prefix?: string; }) {
@@ -135,18 +154,25 @@ if (opts._.length === 0) {
 
 var revOpts: RevenantOpts = {};
 
+// -n, --attempts
 if ('c' in opts) {
   revOpts.maxAttempts = 0+opts['c'];
 }
 
+// -t, --timeout
 if ('t' in opts) {
   revOpts.timeoutSeconds = 0+opts['t'];
 }
 
+// -p, --pattern
 if ('p' in opts) {
   revOpts.outputPatterns = (opts['p'] instanceof Array ? opts['p'] : [ opts['p'] ])
     .map((p: string) => new RegExp(p));
 }
+
+// -v, --verbose
+
+// -q, --quiet
 
 var app = new Revenant(opts._, revOpts);
 app.run().then((cmd: Command) => {

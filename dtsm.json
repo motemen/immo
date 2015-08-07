@@ -18,6 +18,9 @@
     },
     "minimist/minimist.d.ts": {
       "ref": "284c2b8828f06bdde1f949a22ad174f5221d57f9"
+    },
+    "es6-promise/es6-promise.d.ts": {
+      "ref": "284c2b8828f06bdde1f949a22ad174f5221d57f9"
     }
   }
 }
