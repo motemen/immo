@@ -20,14 +20,19 @@ class Command {
     this.args    = cmd.slice(1);
   }
 
-  run(): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
+  run(): Promise<any> {
+    return new Promise<any>((resolve, reject) => {
       this.process = child_process.spawn(this.command, this.args);
       this.process.stdout.on('data', (data: string) => { this.out += data });
       this.process.stderr.on('data', (data: string) => { this.err += data });
       this.process.on('close', (exitCode: number) => {
         this.exitCode = exitCode;
-        resolve();
+
+        if (exitCode === 0) {
+          resolve();
+        } else {
+          reject(`exited with code ${exitCode}`);
+        }
       });
     });
   }
@@ -77,14 +82,26 @@ class Revenant implements RevenantOpts {
       this.attempts++;
 
       var cmd = new Command(this.commandArgs);
+      var timeout = new Promise<Command>((resolve, reject) => {
+        if (this.timeoutSeconds > 0) {
+          var timeoutMillis = this.timeoutSeconds * 1000;
+          setTimeout(() => {
+            cmd.process.kill();
+            reject(`timed out after ${timeoutMillis}ms`);
+          }, timeoutMillis);
+        }
+      });
 
-      return cmd.run()
+      return Promise.race([ cmd.run(), timeout ])
         .then(() => {
-          if (cmd.exitCode === 0 || this.attempts >= this.maxAttempts) {
+          return cmd;
+        }, (err) => {
+          this.log(`--> ${err}`);
+
+          if (this.attempts >= this.maxAttempts) {
             return cmd;
           }
 
-          this.log(`--> exit=${cmd.exitCode} attempts=${this.attempts}/${this.maxAttempts}`);
           this.log(cmd.out, { prefix: 'OUT ' });
           this.log(cmd.err, { prefix: 'ERR ' });
 
