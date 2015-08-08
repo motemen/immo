@@ -26,6 +26,7 @@
     "typescript": "^1.5.3"
   },
   "dependencies": {
+    "lodash.assign": "^3.2.0",
     "minimist": "^1.1.3"
   }
 }

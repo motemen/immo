@@ -1,18 +1,18 @@
 /// <reference path="../../typings/bundle.d.ts" />
-// revenant [-C config.js] [-p <regexp>] [-c <max retry count>] [-t <timeout sec>] [--] command args...
+// immo [-C config.js] [-p <regexp>] [-c <max retry count>] [-t <timeout sec>] [--] command args...
 
 import * as child_process from 'child_process'
 import * as minimist      from 'minimist'
+import * as assign        from 'lodash.assign';
 
 class Command {
-  process: child_process.ChildProcess;
-
   command: string;
   args:    string[];
 
+  process: child_process.ChildProcess;
+
   out: string = '';
   err: string = '';
-
   exitCode: number = null;
 
   constructor(cmd: string[]) {
@@ -23,8 +23,10 @@ class Command {
   run(): Promise<Command> {
     return new Promise<Command>((resolve, reject) => {
       this.process = child_process.spawn(this.command, this.args);
+
       this.process.stdout.on('data', (data: string) => { this.out += data });
       this.process.stderr.on('data', (data: string) => { this.err += data });
+
       this.process.on('close', (exitCode: number, signal: string) => {
         this.exitCode = exitCode;
 
@@ -34,6 +36,7 @@ class Command {
           reject(`exited with code ${exitCode}`);
         }
       });
+
       this.process.on('error', (err: Error) => {
         reject(err);
       });
@@ -41,48 +44,36 @@ class Command {
   }
 }
 
-interface RevenantOpts {
+interface ImmoOpts {
+  // Maximum number of retries.
   maxAttempts?:    number;
+
+  // If the process took longer than this duration, kill it and retry.
   timeoutSeconds?: number;
+
+  // If set, retry only if the patterns are met to the stdout/stderr.
   outputPatterns?: RegExp[];
-  verbose?:        boolean;
+
+  // If set, do not show the outputs of failed execution.
   quiet?:          boolean;
 }
 
-class Revenant implements RevenantOpts {
-  // The command to invoke and retry on failure.
-  commandArgs: string[];
-
-  // Maximum number of retries.
-  maxAttempts: number = 5;
-
-  // If the process took longer than this duration, kill it and retry.
-  timeoutSeconds: number = 0;
-
-  // If set, retry only if the patterns are met to the stdout/stderr.
-  outputPatterns: RegExp[] = [];
-
-  verbose: boolean = false;
-  quiet: boolean = false;
+class Immo implements ImmoOpts {
+  opts: ImmoOpts;
 
   private attempts: number = 0;
 
-  constructor (commandArgs: string[], opts?: RevenantOpts) {
-    this.commandArgs = commandArgs;
-
-    if (opts) {
-      this.maxAttempts    = opts.maxAttempts || 5;
-      this.timeoutSeconds = opts.timeoutSeconds;
-      this.outputPatterns = opts.outputPatterns || [];
-      this.verbose        = opts.verbose;
-      this.quiet          = opts.quiet;
-    }
-
-    this.maxAttempts = this.maxAttempts || 5;
+  constructor (public commandArgs: string[], opts?: ImmoOpts) {
+    this.opts = assign({
+      maxAttempts: 5,
+      timeoutSeconds: 0,
+      outputPatterns: [],
+      quiet: false
+    }, opts);
   }
 
   run(): Promise<Command> {
-    this.logVerbose('run ' + JSON.stringify(this.commandArgs));
+    this.log('--> run ' + JSON.stringify(this.commandArgs));
 
     var next: () => Promise<Command> = () => {
       this.attempts++;
@@ -90,9 +81,9 @@ class Revenant implements RevenantOpts {
       var cmd = new Command(this.commandArgs);
 
       var timeout = new Promise<any>((resolve, reject) => {
-        if (!(this.timeoutSeconds > 0)) return;
+        if (!(this.opts.timeoutSeconds > 0)) return;
 
-        var timeoutMillis = this.timeoutSeconds * 1000;
+        var timeoutMillis = this.opts.timeoutSeconds * 1000;
         setTimeout(() => {
           cmd.process.kill();
           reject(`timed out after ${timeoutMillis}ms`);
@@ -110,7 +101,7 @@ class Revenant implements RevenantOpts {
           return cmd;
         }
 
-        if (this.attempts >= this.maxAttempts) {
+        if (this.attempts >= this.opts.maxAttempts) {
           this.log(`--> giving up`);
           return cmd;
         }
@@ -126,7 +117,7 @@ class Revenant implements RevenantOpts {
   }
 
   private outputMatches(cmd: Command): boolean {
-    var patterns = this.outputPatterns;
+    var patterns = this.opts.outputPatterns;
     if (!patterns || patterns.length === 0) {
       patterns = [ /(?:)/ ];
     }
@@ -135,7 +126,7 @@ class Revenant implements RevenantOpts {
   }
 
   private log(data: string, opts?: { prefix?: string; }) {
-    if (this.quiet) return;
+    if (this.opts.quiet) return;
 
     var lines = data.split(/\n/);
     if (lines[lines.length-1] === '') {
@@ -145,14 +136,8 @@ class Revenant implements RevenantOpts {
       if (opts && opts.prefix) {
         line = opts.prefix + line;
       }
-      process.stderr.write(`# [${this.attempts}/${this.maxAttempts}] ${line}\n`);
+      process.stderr.write(`# [${this.attempts}/${this.opts.maxAttempts}] ${line}\n`);
     });
-  }
-
-  private logVerbose(log: string) {
-    if (!this.verbose) return;
-
-    this.log(log, { prefix: '--> ' });
   }
 }
 
@@ -160,12 +145,11 @@ var opts = minimist(
   process.argv.slice(2), {
     stopEarly: true,
     string: ['pattern'],
-    boolean: ['verbose', 'quiet'],
+    boolean: ['quiet'],
     alias: {
       attempts: ['n'],
       timeout:  ['t'],
       pattern:  ['p'],
-      verbose:  ['v'],
       quiet:    ['q'],
       config:   ['C']
     }
@@ -176,7 +160,7 @@ if (opts._.length === 0) {
   process.exit(1);
 }
 
-var revOpts: RevenantOpts = {};
+var revOpts: ImmoOpts = {};
 
 // -n, --attempts
 if ('attempts' in opts) {
@@ -195,19 +179,12 @@ if ('pattern' in opts) {
     .map((p: string) => new RegExp(p));
 }
 
-// -v, --verbose
-if (!!opts['verbose']) {
-  revOpts.verbose = true;
-  revOpts.quiet   = false;
-}
-
 // -q, --quiet
 if (!!opts['quiet']) {
-  revOpts.verbose = false;
   revOpts.quiet   = true;
 }
 
-var app = new Revenant(opts._, revOpts);
+var app = new Immo(opts._, revOpts);
 app.run().then((cmd: Command) => {
   process.stdout.write(cmd.out);
   process.stderr.write(cmd.err);
