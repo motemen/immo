@@ -42,10 +42,11 @@ class Command {
 }
 
 interface RevenantOpts {
-  maxAttempts?: number;
+  maxAttempts?:    number;
   timeoutSeconds?: number;
   outputPatterns?: RegExp[];
-  verbose?: boolean;
+  verbose?:        boolean;
+  quiet?:          boolean;
 }
 
 class Revenant implements RevenantOpts {
@@ -62,6 +63,7 @@ class Revenant implements RevenantOpts {
   outputPatterns: RegExp[] = [];
 
   verbose: boolean = false;
+  quiet: boolean = false;
 
   private attempts: number = 0;
 
@@ -73,13 +75,14 @@ class Revenant implements RevenantOpts {
       this.timeoutSeconds = opts.timeoutSeconds;
       this.outputPatterns = opts.outputPatterns || [];
       this.verbose        = opts.verbose;
+      this.quiet          = opts.quiet;
     }
 
     this.maxAttempts = this.maxAttempts || 5;
   }
 
   run(): Promise<Command> {
-    this.log('--> run ' + JSON.stringify(this.commandArgs));
+    this.logVerbose('run ' + JSON.stringify(this.commandArgs));
 
     var next: () => Promise<Command> = () => {
       this.attempts++;
@@ -132,6 +135,8 @@ class Revenant implements RevenantOpts {
   }
 
   private log(data: string, opts?: { prefix?: string; }) {
+    if (this.quiet) return;
+
     var lines = data.split(/\n/);
     if (lines[lines.length-1] === '') {
       lines.pop()
@@ -143,9 +148,28 @@ class Revenant implements RevenantOpts {
       process.stderr.write(`# [${this.attempts}/${this.maxAttempts}] ${line}\n`);
     });
   }
+
+  private logVerbose(log: string) {
+    if (!this.verbose) return;
+
+    this.log(log, { prefix: '--> ' });
+  }
 }
 
-var opts = minimist(process.argv.slice(2), { stopEarly: true, default: { re: [] } });
+var opts = minimist(
+  process.argv.slice(2), {
+    stopEarly: true,
+    string: ['pattern'],
+    boolean: ['verbose', 'quiet'],
+    alias: {
+      attempts: ['n'],
+      timeout:  ['t'],
+      pattern:  ['p'],
+      verbose:  ['v'],
+      quiet:    ['q'],
+      config:   ['C']
+    }
+});
 
 if (opts._.length === 0) {
   console.log(`Usage: ${process.argv[1]}`);
@@ -155,24 +179,33 @@ if (opts._.length === 0) {
 var revOpts: RevenantOpts = {};
 
 // -n, --attempts
-if ('c' in opts) {
-  revOpts.maxAttempts = 0+opts['c'];
+if ('attempts' in opts) {
+  revOpts.maxAttempts = 0+opts['attempts'];
 }
 
 // -t, --timeout
-if ('t' in opts) {
-  revOpts.timeoutSeconds = 0+opts['t'];
+if ('timeout' in opts) {
+  revOpts.timeoutSeconds = 0+opts['timeout'];
 }
 
 // -p, --pattern
-if ('p' in opts) {
-  revOpts.outputPatterns = (opts['p'] instanceof Array ? opts['p'] : [ opts['p'] ])
+if ('pattern' in opts) {
+  var pattern = opts['pattern'];
+  revOpts.outputPatterns = (pattern instanceof Array ? pattern : [ pattern ])
     .map((p: string) => new RegExp(p));
 }
 
 // -v, --verbose
+if (!!opts['verbose']) {
+  revOpts.verbose = true;
+  revOpts.quiet   = false;
+}
 
 // -q, --quiet
+if (!!opts['quiet']) {
+  revOpts.verbose = false;
+  revOpts.quiet   = true;
+}
 
 var app = new Revenant(opts._, revOpts);
 app.run().then((cmd: Command) => {

@@ -1,10 +1,10 @@
 {
-  "name": "revenant",
+  "name": "immo",
   "version": "0.1.0",
   "description": "Runs a command and retry on failure",
   "main": "index.js",
   "bin": {
-    "revenant": "./bin/revenant"
+    "immo": "./bin/immo"
   },
   "scripts": {
     "build": "tsc src/lib/cli.ts --module commonjs --outDir lib src/lib/cli.ts",
@@ -13,14 +13,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/motemen/revenant.git"
+    "url": "git+https://github.com/motemen/immo.git"
   },
   "author": "motemen <motemen@gmail.com>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/motemen/revenant/issues"
+    "url": "https://github.com/motemen/immo/issues"
   },
-  "homepage": "https://github.com/motemen/revenant#readme",
+  "homepage": "https://github.com/motemen/immo#readme",
   "devDependencies": {
     "dtsm": "^0.10.3",
     "typescript": "^1.5.3"
