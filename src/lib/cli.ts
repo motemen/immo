@@ -1,165 +1,74 @@
-/// <reference path="../../typings/bundle.d.ts" />
-
-// immo [-C config.js] [-p <regexp>] [-n <max retry count>] [-t <timeout sec>] [--] command args...
+/// <reference path="../../typings/app.d.ts" />
 
 import * as minimist from 'minimist';
-import * as path from 'path';
-import {Command} from './command';
+import * as path     from 'path';
 
-interface ImmoOpts {
-  // Maximum number of retries.
-  maxAttempts?:    number;
+import {Command}       from './command';
+import {Immo,ImmoOpts} from './immo';
 
-  // If the process took longer than this duration, kill it and retry.
-  timeoutSeconds?: number;
+var commandArgs: string[];
+var immoOpts: ImmoOpts = {};
 
-  // If set, retry only if the patterns are met to the stdout/stderr.
-  outputPatterns?: RegExp[];
-
-  // If set, do not show the outputs of failed execution.
-  quiet?:          boolean;
-}
-
-class Immo implements ImmoOpts {
-  opts: ImmoOpts;
-
-  private attempts: number = 0;
-
-  constructor (public commandArgs: string[], opts?: ImmoOpts) {
-    this.opts = opts || {
-      maxAttempts: 5,
-      timeoutSeconds: 0,
-      outputPatterns: null,
-      quiet: false
-    };
+var basename = path.basename(process.argv[1]);
+if (/^immo(.+?)$/.test(basename)) {
+  // symlink execution
+  // immoprog <args> == immo -- prog <args>
+  commandArgs = [ RegExp.$1 ].concat(process.argv.slice(2));
+  try {
+    immoOpts = require(path.resolve(process.cwd(), './.immo.conf.js'));
+  } catch (_) {
   }
-
-  run(): Promise<Command> {
-    this.log('--> run ' + JSON.stringify(this.commandArgs));
-    return this.next();
-  }
-
-  private next() {
-    this.attempts++;
-
-    var promises = [];
-
-    var cmd = new Command(this.commandArgs);
-    promises.push(cmd.run());
-
-    if (this.opts.timeoutSeconds > 0) {
-      var timeoutMillis = this.opts.timeoutSeconds * 1000;
-      var timeout = new Promise<any>((resolve, reject) => {
-        setTimeout(() => {
-          // send SIGTERM
-          // TODO: make configurable
-          cmd.process.kill();
-          reject(`timed out after ${timeoutMillis}ms`);
-        }, timeoutMillis);
-      });
-      promises.push(timeout);
-    }
-
-    return Promise.race(promises).then((cmd) => {
-      this.log('--> command succeeded');
-      return cmd;
-    }).catch((err) => {
-      this.log(`--> ${err}`)
-
-      // If exited normal way (i.e. no timeout), check the output
-      // and if none matched, give up
-      // TODO use err to determine if timed out or not
-      if (cmd.exitCode !== null && !this.outputMatches(cmd)) {
-        this.log('--> no pattern matched');
-        return cmd;
+} else {
+  var opts = minimist(
+    process.argv.slice(2), {
+      stopEarly: true,
+      string: ['pattern'],
+      boolean: ['quiet'],
+      alias: {
+        attempts: ['n'],
+        timeout:  ['t'],
+        pattern:  ['p'],
+        quiet:    ['q'],
+        config:   ['C']
       }
+  });
 
-      if (this.attempts >= this.opts.maxAttempts) {
-        this.log('--> giving up');
-        return cmd;
-      }
-
-      this.log(cmd.out, { prefix: 'OUT ' });
-      this.log(cmd.err, { prefix: 'ERR ' });
-
-      return this.next();
-    });
+  if (opts._.length === 0) {
+    console.log(`Usage: ${basename} [-C <config file>] [-n <attempts>] [-t <timeout>] [-p <pattern>] [-q] [--] <command> <args...>`);
+    process.exit(1);
   }
 
-  private outputMatches(cmd: Command): boolean {
-    var patterns = this.opts.outputPatterns;
-    if (!patterns || patterns.length === 0) {
-      return true;
-    }
+  commandArgs = opts._;
 
-    return patterns.some((re) => re.test(cmd.out) || re.test(cmd.err));
+  // -C, --config
+  if ('config' in opts) {
+    immoOpts = require(path.resolve('.', opts['config']));
   }
 
-  private log(data: string, opts?: { prefix?: string; }) {
-    if (this.opts.quiet) return;
+  // -n, --attempts
+  if ('attempts' in opts) {
+    immoOpts.maxAttempts = 0+opts['attempts'];
+  }
 
-    var lines = data.split(/\n/);
-    if (lines[lines.length-1] === '') {
-      lines.pop()
-    }
-    lines.forEach((line: string) => {
-      if (opts && opts.prefix) {
-        line = opts.prefix + line;
-      }
-      process.stderr.write(`# [${this.attempts}/${this.opts.maxAttempts}] ${line}\n`);
-    });
+  // -t, --timeout
+  if ('timeout' in opts) {
+    immoOpts.timeoutSeconds = 0+opts['timeout'];
+  }
+
+  // -p, --pattern
+  if ('pattern' in opts) {
+    var pattern = opts['pattern'];
+    immoOpts.outputPatterns = (pattern instanceof Array ? pattern : [ pattern ])
+      .map((p: string) => new RegExp(p));
+  }
+
+  // -q, --quiet
+  if (!!opts['quiet']) {
+    immoOpts.quiet = true;
   }
 }
 
-var opts = minimist(
-  process.argv.slice(2), {
-    stopEarly: true,
-    string: ['pattern'],
-    boolean: ['quiet'],
-    alias: {
-      attempts: ['n'],
-      timeout:  ['t'],
-      pattern:  ['p'],
-      quiet:    ['q'],
-      config:   ['C']
-    }
-});
-
-if (opts._.length === 0) {
-  console.log(`Usage: ${process.argv[1]}`);
-  process.exit(1);
-}
-
-var revOpts: ImmoOpts = {};
-
-// -C, --config
-if ('config' in opts) {
-  revOpts = require(path.resolve('.', opts['config']));
-}
-
-// -n, --attempts
-if ('attempts' in opts) {
-  revOpts.maxAttempts = 0+opts['attempts'];
-}
-
-// -t, --timeout
-if ('timeout' in opts) {
-  revOpts.timeoutSeconds = 0+opts['timeout'];
-}
-
-// -p, --pattern
-if ('pattern' in opts) {
-  var pattern = opts['pattern'];
-  revOpts.outputPatterns = (pattern instanceof Array ? pattern : [ pattern ])
-    .map((p: string) => new RegExp(p));
-}
-
-// -q, --quiet
-if (!!opts['quiet']) {
-  revOpts.quiet = true;
-}
-
-var immo = new Immo(opts._, revOpts);
+var immo = new Immo(commandArgs, immoOpts);
 immo.run().then((cmd: Command) => {
   process.stdout.write(cmd.out);
   process.stderr.write(cmd.err);

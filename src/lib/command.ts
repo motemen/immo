@@ -1,4 +1,4 @@
-/// <reference path="../../typings/bundle.d.ts" />
+/// <reference path="../../typings/app.d.ts" />
 
 import * as child_process from 'child_process'
 
