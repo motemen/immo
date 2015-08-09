@@ -21,6 +21,15 @@
     },
     "es6-promise/es6-promise.d.ts": {
       "ref": "284c2b8828f06bdde1f949a22ad174f5221d57f9"
+    },
+    "mocha/mocha.d.ts": {
+      "ref": "3b0f362204ea965952dafdb682a5274d527ef9d0"
+    },
+    "nexpect/nexpect.d.ts": {
+      "ref": "3b0f362204ea965952dafdb682a5274d527ef9d0"
+    },
+    "chai/chai.d.ts": {
+      "ref": "3b0f362204ea965952dafdb682a5274d527ef9d0"
     }
   }
 }
