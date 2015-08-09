@@ -1,48 +1,9 @@
 /// <reference path="../../typings/bundle.d.ts" />
-// immo [-C config.js] [-p <regexp>] [-c <max retry count>] [-t <timeout sec>] [--] command args...
 
-import * as child_process from 'child_process'
-import * as minimist      from 'minimist'
-import * as assign        from 'lodash.assign';
+// immo [-C config.js] [-p <regexp>] [-n <max retry count>] [-t <timeout sec>] [--] command args...
 
-class Command {
-  command: string;
-  args:    string[];
-
-  process: child_process.ChildProcess;
-
-  out: string = '';
-  err: string = '';
-  exitCode: number = null;
-
-  constructor(cmd: string[]) {
-    this.command = cmd[0];
-    this.args    = cmd.slice(1);
-  }
-
-  run(): Promise<Command> {
-    return new Promise<Command>((resolve, reject) => {
-      this.process = child_process.spawn(this.command, this.args);
-
-      this.process.stdout.on('data', (data: string) => { this.out += data });
-      this.process.stderr.on('data', (data: string) => { this.err += data });
-
-      this.process.on('close', (exitCode: number, signal: string) => {
-        this.exitCode = exitCode;
-
-        if (exitCode === 0) {
-          resolve(this);
-        } else {
-          reject(`exited with code ${exitCode}`);
-        }
-      });
-
-      this.process.on('error', (err: Error) => {
-        reject(err);
-      });
-    });
-  }
-}
+import * as minimist from 'minimist'
+import {Command} from './command';
 
 interface ImmoOpts {
   // Maximum number of retries.
@@ -64,62 +25,68 @@ class Immo implements ImmoOpts {
   private attempts: number = 0;
 
   constructor (public commandArgs: string[], opts?: ImmoOpts) {
-    this.opts = assign({
+    this.opts = opts || {
       maxAttempts: 5,
       timeoutSeconds: 0,
-      outputPatterns: [],
+      outputPatterns: null,
       quiet: false
-    }, opts);
+    };
   }
 
   run(): Promise<Command> {
     this.log('--> run ' + JSON.stringify(this.commandArgs));
+    return this.next();
+  }
 
-    var next: () => Promise<Command> = () => {
-      this.attempts++;
+  private next() {
+    this.attempts++;
 
-      var cmd = new Command(this.commandArgs);
+    var promises = [];
 
+    var cmd = new Command(this.commandArgs);
+    promises.push(cmd.run());
+
+    if (this.opts.timeoutSeconds > 0) {
+      var timeoutMillis = this.opts.timeoutSeconds * 1000;
       var timeout = new Promise<any>((resolve, reject) => {
-        if (!(this.opts.timeoutSeconds > 0)) return;
-
-        var timeoutMillis = this.opts.timeoutSeconds * 1000;
         setTimeout(() => {
           cmd.process.kill();
           reject(`timed out after ${timeoutMillis}ms`);
         }, timeoutMillis);
       });
-
-      return Promise.race([ cmd.run(), timeout ]).catch((err) => {
-        this.log(`--> ${err}`)
-
-        // If exited normal way (i.e. no timeout), check the output
-        // and if none matched, give up
-        // TODO use err to determine if timed out or not
-        if (cmd.exitCode !== null && !this.outputMatches(cmd)) {
-          this.log(`--> no pattern matched`);
-          return cmd;
-        }
-
-        if (this.attempts >= this.opts.maxAttempts) {
-          this.log(`--> giving up`);
-          return cmd;
-        }
-
-        this.log(cmd.out, { prefix: 'OUT ' });
-        this.log(cmd.err, { prefix: 'ERR ' });
-
-        return next();
-      });
+      promises.push(timeout);
     }
 
-    return next();
+    return Promise.race(promises).then((cmd) => {
+      this.log('--> command succeeded');
+      return cmd;
+    }).catch((err) => {
+      this.log(`--> ${err}`)
+
+      // If exited normal way (i.e. no timeout), check the output
+      // and if none matched, give up
+      // TODO use err to determine if timed out or not
+      if (cmd.exitCode !== null && !this.outputMatches(cmd)) {
+        this.log('--> no pattern matched');
+        return cmd;
+      }
+
+      if (this.attempts >= this.opts.maxAttempts) {
+        this.log('--> giving up');
+        return cmd;
+      }
+
+      this.log(cmd.out, { prefix: 'OUT ' });
+      this.log(cmd.err, { prefix: 'ERR ' });
+
+      return this.next();
+    });
   }
 
   private outputMatches(cmd: Command): boolean {
     var patterns = this.opts.outputPatterns;
     if (!patterns || patterns.length === 0) {
-      patterns = [ /(?:)/ ];
+      return true;
     }
 
     return patterns.some((re) => re.test(cmd.out) || re.test(cmd.err));
@@ -181,11 +148,11 @@ if ('pattern' in opts) {
 
 // -q, --quiet
 if (!!opts['quiet']) {
-  revOpts.quiet   = true;
+  revOpts.quiet = true;
 }
 
-var app = new Immo(opts._, revOpts);
-app.run().then((cmd: Command) => {
+var immo = new Immo(opts._, revOpts);
+immo.run().then((cmd: Command) => {
   process.stdout.write(cmd.out);
   process.stderr.write(cmd.err);
   process.exit(cmd.exitCode);
