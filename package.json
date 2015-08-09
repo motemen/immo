@@ -2,7 +2,7 @@
   "name": "immo",
   "version": "0.1.0",
   "description": "Runs a command and retry on failure",
-  "main": "index.js",
+  "main": "lib/immo.js",
   "bin": {
     "immo": "./bin/immo"
   },
