@@ -2,7 +2,8 @@
 
 // immo [-C config.js] [-p <regexp>] [-n <max retry count>] [-t <timeout sec>] [--] command args...
 
-import * as minimist from 'minimist'
+import * as minimist from 'minimist';
+import * as path from 'path';
 import {Command} from './command';
 
 interface ImmoOpts {
@@ -50,6 +51,8 @@ class Immo implements ImmoOpts {
       var timeoutMillis = this.opts.timeoutSeconds * 1000;
       var timeout = new Promise<any>((resolve, reject) => {
         setTimeout(() => {
+          // send SIGTERM
+          // TODO: make configurable
           cmd.process.kill();
           reject(`timed out after ${timeoutMillis}ms`);
         }, timeoutMillis);
@@ -128,6 +131,11 @@ if (opts._.length === 0) {
 }
 
 var revOpts: ImmoOpts = {};
+
+// -C, --config
+if ('config' in opts) {
+  revOpts = require(path.resolve('.', opts['config']));
+}
 
 // -n, --attempts
 if ('attempts' in opts) {
