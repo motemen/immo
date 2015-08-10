@@ -1,5 +1,7 @@
 /// <reference path="../../typings/app.d.ts" />
 
+require('es6-promise').polyfill();
+
 import * as child_process from 'child_process'
 
 export class Command {

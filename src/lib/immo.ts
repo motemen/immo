@@ -1,5 +1,7 @@
 /// <reference path="../../typings/app.d.ts" />
 
+require('es6-promise').polyfill();
+
 import * as assign from 'lodash.assign';
 
 import {Command} from './command';
