@@ -3,6 +3,10 @@ immo
 
 Runs a command until it succeeds.
 
+## Description
+
+`immo` runs the specified command and re-runs it if it has failed (exit code != 0). If the command suceeds or the number of attempts reached the limit, `immo` exits with stdout, stderr and the exit code being those of the command.
+
 ## Usage
 
     immo [-C config.json] [-n count] [-t timeout] [-p pattern] [--] command args...
@@ -17,7 +21,7 @@ Options:
 
 ## Configuration
 
-```
+```js
 module.exports = {
   // Corresponds to --pattern
   outputPatterns: [
@@ -36,10 +40,6 @@ module.exports = {
 ```
 
 Also consult the config.sample.js.
-
-## Description
-
-`immo` runs the specified command and re-runs it if it has failed (exit code != 0). If the command suceeds or the number of attempts reached the limit, `immo` exits with stdout, stderr and the exit code being those of the command.
 
 ## Example
 
